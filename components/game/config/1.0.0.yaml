@@ -1,0 +1,17 @@
+game:
+  title: Asteroid Run
+  tagline: KCD Budapest · calm skies
+  colors:
+    ship: "#4cc9f0"
+    bullet: "#ffffff"
+    rock: "#8d99ae"
+    accent: "#4cc9f0"
+    background: "#0b1021"
+  rocks:
+    max: 6
+    speed: 1.0
+    spawnSeconds: 1.6
+  ship:
+    lives: 3
+    shots: 1
+    fireDelayMs: 220

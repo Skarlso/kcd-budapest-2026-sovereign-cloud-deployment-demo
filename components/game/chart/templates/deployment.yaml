@@ -1,0 +1,77 @@
+{{- $image := printf "%s:%s" .Values.image.repository .Chart.AppVersion }}
+{{- with .Values.image.digest }}{{ $image = printf "%s@%s" $.Values.image.repository . }}{{ end }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: asteroid-run
+  labels:
+    app.kubernetes.io/name: asteroid-run
+    app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: asteroid-run
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: asteroid-run
+        app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: game
+          image: {{ $image | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: APP_VERSION
+              value: {{ .Chart.AppVersion | quote }}
+            - name: IMAGE_REF
+              value: {{ $image | quote }}
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: GAME_CONFIG
+              value: {{ .Values.game | default dict | toJson | quote }}
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.database.existingSecret }}
+                  key: username
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.database.existingSecret }}
+                  key: password
+            - name: DB_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.database.existingSecret }}
+                  key: database
+            - name: DATABASE_URL
+              value: "postgres://$(DB_USER):$(DB_PASSWORD)@{{ .Values.database.host }}:{{ .Values.database.port }}/$(DB_NAME)?sslmode=disable"
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL

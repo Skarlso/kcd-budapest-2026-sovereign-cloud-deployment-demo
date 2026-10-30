@@ -1,0 +1,17 @@
+game:
+  title: "Asteroid Run: Budapest Edition"
+  tagline: triple shot unlocked, twice the rocks
+  colors:
+    ship: "#ff4d5e"
+    bullet: "#ffffff"
+    rock: "#c9ada7"
+    accent: "#3ddc84"
+    background: "#140f1c"
+  rocks:
+    max: 12
+    speed: 1.35
+    spawnSeconds: 0.9
+  ship:
+    lives: 3
+    shots: 3
+    fireDelayMs: 180

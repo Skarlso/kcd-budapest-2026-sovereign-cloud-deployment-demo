@@ -1,0 +1,20 @@
+components:
+  - name: ${NAME}
+    version: ${VERSION}
+    provider:
+      name: github.com/skarlso
+    componentReferences:
+      - name: game
+        componentName: github.com/skarlso/kcd-budapest/game
+        version: ${VERSION}
+      - name: postgres
+        componentName: github.com/skarlso/kcd-budapest/postgres
+        version: ${VERSION}
+    resources:
+      - name: rgd
+        type: blob
+        relation: local
+        input:
+          type: File/v1
+          path: ./rgd.yaml
+          mediaType: application/vnd.cncf.kro.resourcegraphdefinition.v1+yaml

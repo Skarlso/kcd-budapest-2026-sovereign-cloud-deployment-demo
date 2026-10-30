@@ -1,0 +1,7 @@
+apiVersion: kro.run/v1alpha1
+kind: Game
+metadata:
+  name: asteroid-run
+  namespace: asteroids
+spec:
+  replicas: 2

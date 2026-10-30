@@ -1,0 +1,27 @@
+replicaCount: 1
+
+image:
+  repository: ghcr.io/skarlso/kcd-budapest-demo-app
+  # Set by the RGD!
+  digest: ""
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 80
+  nodePort: ""
+
+database:
+  host: postgres
+  port: 5432
+  existingSecret: game-db
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 32Mi
+  limits:
+    cpu: 200m
+    memory: 64Mi
+
+# `game:` is appended from config/<version>.yaml when the component is built.

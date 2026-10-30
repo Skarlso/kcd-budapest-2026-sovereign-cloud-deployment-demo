@@ -1,0 +1,210 @@
+apiVersion: kro.run/v1alpha1
+kind: ResourceGraphDefinition
+metadata:
+  name: asteroid-run
+spec:
+  schema:
+    apiVersion: v1alpha1
+    kind: Game
+    spec:
+      replicas: integer | default=2
+      database:
+        name: string | default="asteroids"
+        username: string | default="pilot"
+        password: string | default="changeme"
+      storage: string | default="1Gi"
+
+  resources:
+    - id: dbSecret
+      template:
+        apiVersion: v1
+        kind: Secret
+        metadata:
+          name: game-db
+          namespace: ${schema.metadata.namespace}
+        type: Opaque
+        stringData:
+          database: ${schema.spec.database.name}
+          username: ${schema.spec.database.username}
+          password: ${schema.spec.database.password}
+
+    # ==========================================================
+    # PostgreSQL section: OCM Resources -> OCIRepository -> HelmRelease
+    # ==========================================================
+    - id: postgresChart
+      readyWhen:
+        - ${postgresChart.status.conditions.exists(c, c.type == "Ready" && c.status == "True")}
+      template:
+        apiVersion: delivery.ocm.software/v1alpha1
+        kind: Resource
+        metadata:
+          name: postgres-chart
+          namespace: ${schema.metadata.namespace}
+        spec:
+          componentRef:
+            name: asteroid-run
+          resource:
+            byReference:
+              referencePath:
+                - name: postgres
+              resource:
+                name: helm-chart
+          additionalStatusFields:
+            oci: resource.access.toOCI()
+
+    - id: postgresImage
+      readyWhen:
+        - ${postgresImage.status.conditions.exists(c, c.type == "Ready" && c.status == "True")}
+      template:
+        apiVersion: delivery.ocm.software/v1alpha1
+        kind: Resource
+        metadata:
+          name: postgres-image
+          namespace: ${schema.metadata.namespace}
+        spec:
+          componentRef:
+            name: asteroid-run
+          resource:
+            byReference:
+              referencePath:
+                - name: postgres
+              resource:
+                name: image
+          additionalStatusFields:
+            oci: resource.access.toOCI()
+
+    - id: postgresSource
+      readyWhen:
+        - ${postgresSource.status.conditions.exists(c, c.type == "Ready" && c.status == "True")}
+      template:
+        apiVersion: source.toolkit.fluxcd.io/v1
+        kind: OCIRepository
+        metadata:
+          name: postgres
+          namespace: ${schema.metadata.namespace}
+        spec:
+          interval: 1m
+          insecure: true
+          layerSelector:
+            mediaType: application/vnd.cncf.helm.chart.content.v1.tar+gzip
+            operation: copy
+          url: oci://${postgresChart.status.additional.oci.registry}/${postgresChart.status.additional.oci.repository}
+          ref:
+            digest: ${postgresChart.status.additional.oci.digest}
+
+    - id: postgresRelease
+      readyWhen:
+        - ${postgresRelease.status.conditions.exists(c, c.type == "Ready" && c.status == "True")}
+      template:
+        apiVersion: helm.toolkit.fluxcd.io/v2
+        kind: HelmRelease
+        metadata:
+          name: postgres
+          namespace: ${schema.metadata.namespace}
+        spec:
+          releaseName: postgres
+          interval: 1m
+          timeout: 5m
+          chartRef:
+            kind: OCIRepository
+            name: ${postgresSource.metadata.name}
+          values:
+            image:
+              repository: ${postgresImage.status.additional.oci.registry}/${postgresImage.status.additional.oci.repository}
+              digest: ${postgresImage.status.additional.oci.digest}
+            auth:
+              existingSecret: ${dbSecret.metadata.name}
+            persistence:
+              size: ${schema.spec.storage}
+
+    # ==========================================================
+    # Game section: OCM Resources -> OCIRepository -> HelmRelease
+    # ==========================================================
+    - id: gameChart
+      readyWhen:
+        - ${gameChart.status.conditions.exists(c, c.type == "Ready" && c.status == "True")}
+      template:
+        apiVersion: delivery.ocm.software/v1alpha1
+        kind: Resource
+        metadata:
+          name: game-chart
+          namespace: ${schema.metadata.namespace}
+        spec:
+          componentRef:
+            name: asteroid-run
+          resource:
+            byReference:
+              referencePath:
+                - name: game
+              resource:
+                name: helm-chart
+          additionalStatusFields:
+            oci: resource.access.toOCI()
+
+    - id: gameImage
+      readyWhen:
+        - ${gameImage.status.conditions.exists(c, c.type == "Ready" && c.status == "True")}
+      template:
+        apiVersion: delivery.ocm.software/v1alpha1
+        kind: Resource
+        metadata:
+          name: game-image
+          namespace: ${schema.metadata.namespace}
+        spec:
+          componentRef:
+            name: asteroid-run
+          resource:
+            byReference:
+              referencePath:
+                - name: game
+              resource:
+                name: image
+          additionalStatusFields:
+            oci: resource.access.toOCI()
+
+    - id: gameSource
+      readyWhen:
+        - ${gameSource.status.conditions.exists(c, c.type == "Ready" && c.status == "True")}
+      template:
+        apiVersion: source.toolkit.fluxcd.io/v1
+        kind: OCIRepository
+        metadata:
+          name: asteroid-run
+          namespace: ${schema.metadata.namespace}
+        spec:
+          interval: 1m
+          insecure: true
+          layerSelector:
+            mediaType: application/vnd.cncf.helm.chart.content.v1.tar+gzip
+            operation: copy
+          url: oci://${gameChart.status.additional.oci.registry}/${gameChart.status.additional.oci.repository}
+          ref:
+            digest: ${gameChart.status.additional.oci.digest}
+
+    - id: gameRelease
+      readyWhen:
+        - ${gameRelease.status.conditions.exists(c, c.type == "Ready" && c.status == "True")}
+      template:
+        apiVersion: helm.toolkit.fluxcd.io/v2
+        kind: HelmRelease
+        metadata:
+          name: asteroid-run
+          namespace: ${schema.metadata.namespace}
+        spec:
+          releaseName: asteroid-run
+          interval: 1m
+          timeout: 5m
+          chartRef:
+            kind: OCIRepository
+            name: ${gameSource.metadata.name}
+          values:
+            replicaCount: ${schema.spec.replicas}
+            image:
+              repository: ${gameImage.status.additional.oci.registry}/${gameImage.status.additional.oci.repository}
+              digest: ${gameImage.status.additional.oci.digest}
+            database:
+              existingSecret: ${dbSecret.metadata.name}
+            # kind maps this NodePort to http://localhost:8080 (see Taskfile cluster:create).
+            service:
+              type: NodePort
+              nodePort: 30080

@@ -1,0 +1,4 @@
+# Transfer policy: copy every resource by value as a local blob, so the target needs no access to ghcr or Docker Hub.
+type: generic.config.ocm.software/v1
+configurations:
+  - type: localblob.uploader.transfer.config.ocm.software/v1alpha1

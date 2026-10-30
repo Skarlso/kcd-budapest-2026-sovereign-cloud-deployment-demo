@@ -1,0 +1,324 @@
+# Asteroid Run: OCM air-gap demo for KCD Budapest.
+#
+#   Online, before or during the talk:   task image:push VERSION=1.0.0 && task image:push VERSION=1.0.1 && task online
+#   WiFi off, on stage:                  task deploy   ->  play  ->  task upgrade
+#   Rehearse again offline:              task reset
+version: '3'
+
+vars:
+  CLI_IMAGE: '{{ .CLI_IMAGE | default "ghcr.io/open-component-model/cli:0.21.0" }}'
+  TOOLKIT_CHART: '{{ .TOOLKIT_CHART | default "oci://ghcr.io/open-component-model/kubernetes/controller/chart:0.21.0" }}'
+  KRO_VERSION: '0.9.4'
+  KIND_NODE_IMAGE: 'kindest/node:v1.35.1'
+  CLUSTER_NAME: kcd-budapest
+  REGISTRY_NAME: registry
+  REGISTRY_PORT: '5001'
+  REGISTRY_INTERNAL_PORT: '5000'
+  NAMESPACE: asteroids
+
+  VERSION: '{{ .VERSION | default "1.0.0" }}'
+  UPGRADE_VERSION: '1.0.1'
+  NAME: github.com/skarlso/kcd-budapest/product
+  IMAGE: ghcr.io/skarlso/kcd-budapest-demo-app
+  POSTGRES_TAG: 18-alpine
+
+  TMP: '{{ .TASKFILE_DIR }}/tmp'
+  CTF: '{{ .TASKFILE_DIR }}/tmp/ctf'
+  AIRGAP_CTF: '{{ .TASKFILE_DIR }}/tmp/airgap-ctf'
+  ocm: >-
+    docker run --rm
+    --network kind
+    --user $(id -u):$(id -g)
+    -v {{ .TASKFILE_DIR }}:{{ .TASKFILE_DIR }}
+    -e TMPDIR={{ .TMP }}
+    -e NAME -e VERSION -e IMAGE -e CHART_DIR -e POSTGRES_TAG -e OCM_CONFIG
+    -w $PWD
+    {{ .CLI_IMAGE }}
+
+tasks:
+
+  online:
+    desc: 'Run this to prepare everything that needs to be fetched: cluster, controllers, build, sign and transfer both versions'
+    cmds:
+      - task: check
+      - task: cluster:setup
+      - task: airgap
+        vars: { VERSION: '{{.VERSION}}' }
+      - task: airgap
+        vars: { VERSION: '{{.UPGRADE_VERSION}}' }
+      - echo "Done! Turn off wifi now."
+
+  deploy:
+    desc: 'Offline: import VERSION into the cluster registry and bootstrap the game'
+    cmds:
+      - task: cluster:import
+        vars: { VERSION: '{{.VERSION}}' }
+      - task: cluster:bootstrap
+      - echo "🚀 Play at http://localhost:8080"
+
+  upgrade:
+    desc: 'Offline: import UPGRADE_VERSION and bump the OCM Component updating the version'
+    cmds:
+      - task: cluster:import
+        vars: { VERSION: '{{.UPGRADE_VERSION}}' }
+      - >-
+        kubectl -n {{.NAMESPACE}} patch component asteroid-run --type merge
+        -p '{"spec":{"semver":"{{.UPGRADE_VERSION}}"}}'
+      - >-
+        kubectl -n {{.NAMESPACE}} wait deploy/asteroid-run --timeout=300s
+        --for=jsonpath='{.spec.template.metadata.labels.app\.kubernetes\.io/version}'={{.UPGRADE_VERSION}}
+      - kubectl -n {{.NAMESPACE}} rollout status deploy/asteroid-run --timeout=300s
+      - echo "🎉 {{.UPGRADE_VERSION}} is live at http://localhost:8080"
+
+  reset:
+    desc: 'Offline: remove the game and the scores. Cluster and controllers stay.'
+    cmds:
+      - kubectl -n {{.NAMESPACE}} delete game asteroid-run --ignore-not-found --wait --timeout=120s
+      - kubectl delete -f deploy/bootstrap.yaml --ignore-not-found --wait --timeout=120s
+      - kubectl delete rgd asteroid-run --ignore-not-found
+      - kubectl delete -f deploy/namespace.yaml --ignore-not-found --wait --timeout=180s
+      - docker rm -f {{.REGISTRY_NAME}}
+      - task: cluster:registry
+      - task: cluster:registry:connect
+
+  # ================= IMAGE =================
+
+  image:build:
+    desc: Build the game image for the local platform and load it into Docker
+    dir: components/game
+    cmd: >-
+      docker buildx build --platform linux/{{ARCH}} --build-arg VERSION={{.VERSION}}
+      -t {{.IMAGE}}:{{.VERSION}} --load .
+
+  image:push:
+    desc: Build and push the multi-arch game image to ghcr
+    dir: components/game
+    cmd: >-
+      docker buildx build --platform linux/amd64,linux/arm64 --build-arg VERSION={{.VERSION}}
+      -t {{.IMAGE}}:{{.VERSION}} --push .
+
+  # ================= BUILD, SIGN, TRANSFER =================
+
+  airgap:
+    desc: Build, sign and transfer VERSION into the air-gap CTF, skip if exists
+    status:
+      - '{{.ocm}} get cv {{.AIRGAP_CTF}}//{{.NAME}}:{{.VERSION}} >/dev/null 2>&1'
+    cmds:
+      - task: build:product
+        vars: { VERSION: '{{.VERSION}}' }
+      - task: transfer:airgap
+        vars: { VERSION: '{{.VERSION}}' }
+
+  build:game:
+    desc: Stage the chart with config/VERSION.yaml and add the game component
+    dir: components/game
+    vars:
+      CHART_DIR: '{{.TMP}}/build/{{.VERSION}}/game-chart'
+    env:
+      NAME: github.com/skarlso/kcd-budapest/game
+      VERSION: '{{.VERSION}}'
+      IMAGE: '{{.IMAGE}}'
+      CHART_DIR: '{{.CHART_DIR}}'
+    preconditions:
+      - sh: test -f config/{{.VERSION}}.yaml
+        msg: 'No game config for {{.VERSION}}: create components/game/config/{{.VERSION}}.yaml'
+    cmds:
+      - rm -rf {{.CHART_DIR}} && mkdir -p {{.CHART_DIR}} && cp -R chart/. {{.CHART_DIR}}/
+      - cat config/{{.VERSION}}.yaml >> {{.CHART_DIR}}/values.yaml
+      - >-
+        sed -i.bak -e 's/^version: .*/version: {{.VERSION}}/' -e 's/^appVersion: .*/appVersion: "{{.VERSION}}"/'
+        {{.CHART_DIR}}/Chart.yaml && rm {{.CHART_DIR}}/Chart.yaml.bak
+      # The staged chart lives in tmp/, outside this dir, and input paths may not escape the working directory.
+      - >-
+        {{.ocm}} add componentversion --repository {{.CTF}} --working-directory {{.TASKFILE_DIR}}
+        --component-version-conflict-policy=replace --constructor component-constructor.yaml
+
+  build:postgres:
+    desc: Add the postgres component
+    dir: components/postgres
+    env:
+      NAME: github.com/skarlso/kcd-budapest/postgres
+      VERSION: '{{.VERSION}}'
+      POSTGRES_TAG: '{{.POSTGRES_TAG}}'
+    cmd: >-
+      {{.ocm}} add componentversion --repository {{.CTF}}
+      --component-version-conflict-policy=replace --constructor component-constructor.yaml
+
+  build:product:
+    desc: Build game and postgres components, and run signing
+    deps:
+      - task: build:game
+        vars: { VERSION: '{{.VERSION}}' }
+      - task: build:postgres
+        vars: { VERSION: '{{.VERSION}}' }
+      - keys
+    dir: components/product
+    env:
+      NAME: '{{.NAME}}'
+      VERSION: '{{.VERSION}}'
+    cmds:
+      - >-
+        {{.ocm}} add componentversion --repository {{.CTF}}
+        --component-version-conflict-policy=replace --constructor component-constructor.yaml
+      - task: sign
+        vars: { COMPONENT: '{{.CTF}}//{{.NAME}}:{{.VERSION}}' }
+
+  keys:
+    desc: Generate the RSA signing key pair
+    dir: tmp/keys
+    status:
+      - test -f private.pem
+      - test -f public.pem
+    cmds:
+      - openssl genpkey -algorithm RSA -out private.pem -pkeyopt rsa_keygen_bits:4096
+      - openssl rsa -pubout -in private.pem -out public.pem
+
+  sign:
+    dir: components/product
+    env:
+      OCM_CONFIG: ./config/sign.yaml
+    requires:
+      vars: [COMPONENT]
+    cmd: '{{.ocm}} sign componentversion {{.COMPONENT}}'
+
+  verify:
+    dir: components/product
+    env:
+      OCM_CONFIG: ./config/verify.yaml
+    requires:
+      vars: [COMPONENT]
+    cmd: '{{.ocm}} verify componentversion {{.COMPONENT}}'
+
+  transfer:airgap:
+    desc: Verify, then copy VERSION with all resources by value into the air-gap CTF
+    cmds:
+      - task: verify
+        vars: { COMPONENT: '{{.CTF}}//{{.NAME}}:{{.VERSION}}' }
+      - >-
+        {{.ocm}} transfer cv --config transfer.yaml --recursive
+        {{.CTF}}//{{.NAME}}:{{.VERSION}} {{.AIRGAP_CTF}}
+
+  cluster:setup:
+    desc: Create the kind cluster with a local registry. Preload the OCM controller, kro and Flux resources
+    cmds:
+      - task: cluster:registry
+      - task: cluster:create
+      - task: cluster:registry:configure
+      - task: cluster:registry:connect
+      - task: cluster:install:controllers
+
+  cluster:registry:
+    status:
+      - docker inspect -f '{{`{{.State.Running}}`}}' {{.REGISTRY_NAME}} 2>/dev/null | grep -q true
+    cmd: >-
+      docker run -d --restart=always --name {{.REGISTRY_NAME}}
+      -p "127.0.0.1:{{.REGISTRY_PORT}}:{{.REGISTRY_INTERNAL_PORT}}" registry:2
+
+  cluster:create:
+    status:
+      - kind get clusters | grep -qx {{.CLUSTER_NAME}}
+    cmd: |
+      cat <<EOF | kind create cluster --name {{.CLUSTER_NAME}} --image={{.KIND_NODE_IMAGE}} --config=-
+      kind: Cluster
+      apiVersion: kind.x-k8s.io/v1alpha4
+      nodes:
+      - role: control-plane
+        extraPortMappings:
+        # Game NodePort (set in the RGD), reachable as http://localhost:8080
+        - containerPort: 30080
+          hostPort: 8080
+          protocol: TCP
+      containerdConfigPatches:
+      - |-
+        [plugins."io.containerd.grpc.v1.cri".registry]
+          config_path = "/etc/containerd/certs.d"
+      EOF
+
+  cluster:registry:configure:
+    desc: Let containerd pull from registry:5000 over plain HTTP
+    cmd: |
+      for node in $(kind get nodes --name {{.CLUSTER_NAME}}); do
+        HOSTS_DIR="/etc/containerd/certs.d/{{.REGISTRY_NAME}}:{{.REGISTRY_INTERNAL_PORT}}"
+        docker exec "${node}" mkdir -p "${HOSTS_DIR}"
+        printf '[host."http://{{.REGISTRY_NAME}}:{{.REGISTRY_INTERNAL_PORT}}"]\n  skip_verify = true\n' \
+          | docker exec -i "${node}" cp /dev/stdin "${HOSTS_DIR}/hosts.toml"
+      done
+
+  cluster:registry:connect:
+    status:
+      - test "$(docker inspect -f '{{`{{json .NetworkSettings.Networks.kind}}`}}' {{.REGISTRY_NAME}})" != null
+    cmd: docker network connect --alias {{.REGISTRY_NAME}} kind {{.REGISTRY_NAME}}
+
+  cluster:install:controllers:
+    deps: [cluster:install:toolkit, cluster:install:kro, cluster:install:flux]
+
+  cluster:install:toolkit:
+    cmd: >-
+      helm upgrade --install ocm-k8s-toolkit {{.TOOLKIT_CHART}}
+      --namespace ocm-k8s-toolkit-system --create-namespace --wait --timeout=5m
+
+  cluster:install:kro:
+    cmd: >-
+      helm upgrade --install kro oci://registry.k8s.io/kro/charts/kro --version={{.KRO_VERSION}}
+      --namespace kro --create-namespace --set rbac.mode=aggregation --wait --timeout=5m
+
+  cluster:install:flux:
+    cmd: flux install --components=source-controller,helm-controller
+
+  cluster:import:
+    desc: 'Offline: push VERSION from the air-gap CTF into the in-cluster registry'
+    cmd: >-
+      {{.ocm}} transfer cv --config transfer.yaml --recursive
+      {{.AIRGAP_CTF}}//{{.NAME}}:{{.VERSION}} http://{{.REGISTRY_NAME}}:{{.REGISTRY_INTERNAL_PORT}}
+
+  cluster:bootstrap:
+    desc: Apply RBAC, the signing key and the OCM bootstrap chain, then create the Game
+    cmds:
+      - kubectl apply -f deploy/namespace.yaml -f deploy/rbac.yaml
+      - |
+        cat > {{.TMP}}/keys/verify.ocmconfig <<EOF
+        type: generic.config.ocm.software/v1
+        configurations:
+        - type: signing.config.ocm.software/v1alpha1
+          signature: default
+          verifier:
+            type: RSASigningConfiguration/v1alpha1
+        - type: credentials.config.ocm.software
+          consumers:
+          - identity:
+              type: RSA/v1alpha1
+              algorithm: RSASSA-PSS
+              signature: default
+            credentials:
+            - type: Credentials/v1
+              properties:
+                public_key_pem: |
+        $(sed 's/^/          /' {{.TMP}}/keys/public.pem)
+        EOF
+        kubectl -n {{.NAMESPACE}} create secret generic signing-key \
+          --from-file=.ocmconfig={{.TMP}}/keys/verify.ocmconfig --dry-run=client -o yaml | kubectl apply -f -
+      - kubectl apply -f deploy/bootstrap.yaml
+      - kubectl -n {{.NAMESPACE}} wait namespaceddeployer/asteroid-run --for=condition=Ready --timeout=300s
+      - kubectl wait rgd/asteroid-run --for=condition=Ready --timeout=300s
+      - kubectl apply -f deploy/game.yaml
+      - kubectl -n {{.NAMESPACE}} wait game/asteroid-run --for=condition=Ready --timeout=300s
+
+  status:
+    desc: Show the health of OCM, kro and Flux resources
+    silent: true
+    cmds:
+      - kubectl -n {{.NAMESPACE}} get component,resource,namespaceddeployer,game,ocirepository,helmrelease
+      - echo; kubectl -n {{.NAMESPACE}} get pods -o custom-columns='POD:.metadata.name,IMAGE:.spec.containers[0].image'
+
+  check:
+    silent: true
+    cmds:
+      - for: [docker, kubectl, kind, helm, flux, openssl, curl]
+        cmd: command -v {{.ITEM}} >/dev/null || (echo "{{.ITEM}} not found" && exit 1)
+
+  clean:
+    desc: Delete everything
+    cmds:
+      - kind delete cluster --name {{.CLUSTER_NAME}} || true
+      - docker rm -f {{.REGISTRY_NAME}} || true
+      - rm -rf {{.TMP}}

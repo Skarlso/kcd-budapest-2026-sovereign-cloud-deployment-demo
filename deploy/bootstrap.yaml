@@ -1,0 +1,49 @@
+apiVersion: delivery.ocm.software/v1alpha1
+kind: Repository
+metadata:
+  name: airgap-registry
+  namespace: asteroids
+spec:
+  repositorySpec:
+    type: OCIRegistry
+    baseUrl: http://registry:5000
+  interval: 10m
+---
+apiVersion: delivery.ocm.software/v1alpha1
+kind: Component
+metadata:
+  name: asteroid-run
+  namespace: asteroids
+spec:
+  component: github.com/skarlso/kcd-budapest/product
+  repositoryRef:
+    name: airgap-registry
+  semver: "1.0.0" # this will be bumped during the upgrade. Make this a constraint to make things more interesting.
+  interval: 1m
+  ocmConfig:
+    - apiVersion: v1
+      kind: Secret
+      name: signing-key
+---
+apiVersion: delivery.ocm.software/v1alpha1
+kind: Resource
+metadata:
+  name: asteroid-run-rgd
+  namespace: asteroids
+spec:
+  componentRef:
+    name: asteroid-run
+  resource:
+    byReference:
+      resource:
+        name: rgd
+---
+apiVersion: delivery.ocm.software/v1alpha1
+kind: NamespacedDeployer
+metadata:
+  name: asteroid-run
+  namespace: asteroids
+spec:
+  serviceAccountName: asteroid-run-deployer
+  resourceRef:
+    name: asteroid-run-rgd

@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Asteroid Run</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <canvas id="game"></canvas>
+
+  <header class="hud">
+    <div>
+      <h1 id="title">Asteroid Run</h1>
+      <p id="tagline"></p>
+    </div>
+    <span id="version" class="badge">v?</span>
+    <div class="stats">
+      <span id="score">0</span>
+      <span id="lives"></span>
+    </div>
+  </header>
+
+  <aside class="board">
+    <h2>High scores</h2>
+    <ol id="scores"></ol>
+    <p id="db-status" class="hint">connecting to postgres...</p>
+  </aside>
+
+  <div id="overlay" class="overlay">
+    <div id="start-panel" class="panel">
+      <h2 id="start-title">Asteroid Run</h2>
+      <p id="loadout" class="loadout"></p>
+      <p class="controls">WASD / arrows to fly, mouse to aim, click or Space to shoot.<br>
+        Grab the <span class="signed">signed ✓</span> packages.</p>
+      <button id="launch" type="button">Launch</button>
+      <p class="hint">or press Enter</p>
+    </div>
+
+    <form id="over-panel" class="panel hidden" autocomplete="off">
+      <h2>Game over</h2>
+      <p class="final"><span id="final-score">0</span> points</p>
+      <label for="name">Pilot name</label>
+      <input id="name" name="name" maxlength="12" required>
+      <div class="actions">
+        <button id="submit" type="submit">Save score</button>
+        <button id="again" type="button" class="ghost">Fly again</button>
+      </div>
+      <p id="save-status" class="hint"></p>
+    </form>
+  </div>
+
+  <footer id="footer"></footer>
+
+  <script src="game.js"></script>
+</body>
+</html>

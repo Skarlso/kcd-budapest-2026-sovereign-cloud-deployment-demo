@@ -1,0 +1,22 @@
+image:
+  repository: docker.io/library/postgres
+  tag: 18-alpine
+  # Set by the RGD from the OCM Resource status: the localized image in the target registry.
+  digest: ""
+  pullPolicy: IfNotPresent
+
+auth:
+  # Secret with `username`, `password` and `database` keys.
+  existingSecret: game-db
+
+persistence:
+  size: 1Gi
+  storageClass: ""
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi

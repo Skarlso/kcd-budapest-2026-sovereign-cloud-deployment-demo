@@ -1,0 +1,78 @@
+# 1. The NamespacedDeployer impersonates asteroid-run-deployer, which may only apply the RGD.
+# 2. The OCM controller watches what the deployer applied, so it needs to read RGDs.
+# 3. kro runs with rbac.mode=aggregation and may only manage what the RGD creates.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: asteroid-run-deployer
+  namespace: asteroids
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: asteroid-run-deployer
+rules:
+  - apiGroups: ["kro.run"]
+    resources: ["resourcegraphdefinitions"]
+    verbs: ["create", "delete", "get", "list", "patch", "update", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: asteroid-run-deployer
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: asteroid-run-deployer
+subjects:
+  - kind: ServiceAccount
+    name: asteroid-run-deployer
+    namespace: asteroids
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: ocm-controller-read-rgds
+rules:
+  - apiGroups: ["kro.run"]
+    resources: ["resourcegraphdefinitions"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: ocm-controller-read-rgds
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: ocm-controller-read-rgds
+subjects:
+  - kind: ServiceAccount
+    name: ocm-k8s-toolkit-controller-manager
+    namespace: ocm-k8s-toolkit-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kro-asteroid-run
+  labels:
+    rbac.kro.run/aggregate-to-controller: "true"
+rules:
+  - apiGroups: ["kro.run"]
+    resources: ["games"]
+    verbs: ["create", "delete", "get", "list", "patch", "update", "watch"]
+  - apiGroups: ["kro.run"]
+    resources: ["games/status"]
+    verbs: ["get", "patch", "update"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["create", "delete", "get", "list", "patch", "update", "watch"]
+  - apiGroups: ["delivery.ocm.software"]
+    resources: ["resources"]
+    verbs: ["create", "delete", "get", "list", "patch", "update", "watch"]
+  - apiGroups: ["source.toolkit.fluxcd.io"]
+    resources: ["ocirepositories"]
+    verbs: ["create", "delete", "get", "list", "patch", "update", "watch"]
+  - apiGroups: ["helm.toolkit.fluxcd.io"]
+    resources: ["helmreleases"]
+    verbs: ["create", "delete", "get", "list", "patch", "update", "watch"]

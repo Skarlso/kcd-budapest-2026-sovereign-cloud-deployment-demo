@@ -1,0 +1,177 @@
+:root {
+  --accent: #4cc9f0;
+  --ship: #4cc9f0;
+  --bg: #0b1021;
+  --text: #e8ecf4;
+  --muted: #8b93a7;
+  --panel: rgba(10, 14, 28, 0.85);
+  --line: rgba(255, 255, 255, 0.1);
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--text);
+  font: 15px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+canvas {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  cursor: crosshair;
+}
+
+.hud {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 16px 20px;
+  pointer-events: none;
+}
+
+.hud h1 {
+  margin: 0;
+  font-size: 22px;
+  color: var(--accent);
+  letter-spacing: 0.04em;
+}
+
+.hud p { margin: 2px 0 0; color: var(--muted); font-size: 14px; }
+
+.badge {
+  margin-top: 2px;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  border-radius: 999px;
+  padding: 2px 12px;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.stats { margin-left: auto; text-align: right; }
+#score { display: block; font-size: 30px; font-weight: 700; font-variant-numeric: tabular-nums; }
+#lives { color: var(--ship); letter-spacing: 4px; }
+
+.board {
+  position: fixed;
+  right: 20px;
+  top: 100px;
+  width: 250px;
+  padding: 12px 14px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  pointer-events: none;
+}
+
+.board h2 { margin: 0 0 8px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--muted); }
+.board ol { margin: 0; padding: 0; list-style: none; counter-reset: rank; }
+
+.board li {
+  display: flex;
+  gap: 8px;
+  padding: 3px 0;
+  counter-increment: rank;
+  font-variant-numeric: tabular-nums;
+}
+
+.board li::before { content: counter(rank); width: 1.5em; color: var(--muted); }
+.board li.empty::before { content: none; }
+.board .who { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.board .ver { color: var(--muted); font-size: 12px; align-self: center; }
+.board .pts { color: var(--accent); font-weight: 700; }
+
+.hint { margin: 8px 0 0; color: var(--muted); font-size: 12px; }
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.panel {
+  width: 100%;
+  max-width: 440px;
+  padding: 28px 32px;
+  text-align: center;
+  background: var(--panel);
+  border: 1px solid var(--accent);
+  border-radius: 14px;
+}
+
+.panel h2 { margin: 0 0 12px; font-size: 26px; color: var(--accent); }
+.loadout { color: var(--text); }
+.controls { color: var(--muted); font-size: 14px; }
+.signed { color: var(--accent); font-weight: 700; }
+.final { font-size: 18px; }
+#final-score { font-size: 34px; font-weight: 700; color: var(--accent); }
+
+label { display: block; margin: 12px 0 6px; color: var(--muted); font-size: 13px; }
+
+input {
+  width: 100%;
+  padding: 10px 12px;
+  font: inherit;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  outline: none;
+  text-align: center;
+}
+
+input:focus { border-color: var(--accent); }
+
+.actions { display: flex; gap: 10px; justify-content: center; margin-top: 14px; }
+
+button {
+  padding: 10px 22px;
+  font: inherit;
+  font-weight: 700;
+  color: var(--bg);
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+button.ghost { color: var(--accent); background: transparent; }
+button:disabled { opacity: 0.5; cursor: default; }
+
+footer {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 10px 20px;
+  font-size: 14px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+
+footer b { color: var(--text); font-weight: 600; }
+footer .ok { color: #3ddc84; }
+footer .bad { color: #ff6b6b; }
+
+.hidden { display: none !important; }
+
+@media (max-width: 720px) {
+  .board { display: none; }
+}

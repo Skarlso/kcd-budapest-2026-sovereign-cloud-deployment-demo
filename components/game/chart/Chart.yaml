@@ -1,0 +1,7 @@
+apiVersion: v2
+name: asteroid-run
+description: Asteroid Run, the KCD Budapest OCM demo game
+type: application
+# Set to component version in later steps.
+version: 0.0.0
+appVersion: "0.0.0"

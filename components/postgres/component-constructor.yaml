@@ -1,0 +1,20 @@
+components:
+  - name: ${NAME}
+    version: ${VERSION}
+    provider:
+      name: github.com/skarlso
+    resources:
+      # Upstream image from Docker Hub, copied by value into the air-gap archive.
+      - name: image
+        type: ociImage
+        version: "18"
+        relation: external
+        access:
+          type: OCIImage/v1
+          imageReference: docker.io/library/postgres:${POSTGRES_TAG}
+      - name: helm-chart
+        type: helmChart
+        relation: local
+        input:
+          type: Helm/v1
+          path: ./chart
